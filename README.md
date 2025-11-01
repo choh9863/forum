@@ -61,43 +61,44 @@ DCInside와 아카라이브와 유사한 커뮤니티 포럼 플랫폼
 
 ## 개발 시작
 
-### 1. 의존성 설치
+### 🪟 Windows 사용자 (권장)
+**PostgreSQL 설치 없이 바로 실행 가능!**
+
+상세한 가이드는 **[WINDOWS_SETUP.md](WINDOWS_SETUP.md)** 참조
 
 ```bash
-# Frontend
-cd frontend
-npm install
-
 # Backend
 cd backend
 npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run dev
+
+# Frontend (새 터미널)
+cd frontend
+npm install
+npm run dev
 ```
 
-### 2. 데이터베이스 설정
-
+### 🐳 Docker 사용자 (Linux/Mac/Windows)
 ```bash
 docker-compose up -d
-cd backend
-npx prisma migrate dev
+docker-compose exec backend npx prisma migrate dev --name init
 ```
 
-### 3. 개발 서버 실행
-
-```bash
-# Frontend (터미널 1)
-cd frontend
-npm run dev
-
-# Backend (터미널 2)
-cd backend
-npm run dev
-```
+### 💻 수동 설치 (PostgreSQL 사용)
+상세한 가이드는 **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** 참조
 
 ## 환경 변수
 
 ### Backend (.env)
-```
-DATABASE_URL="postgresql://user:password@localhost:5432/forum"
+```env
+# SQLite (Windows/로컬 개발 - 기본값)
+DATABASE_URL="file:./dev.db"
+
+# PostgreSQL (프로덕션/Docker)
+# DATABASE_URL="postgresql://user:password@localhost:5432/forum"
+
 JWT_SECRET="your-secret-key"
 EMAIL_HOST="smtp.gmail.com"
 EMAIL_PORT=587
@@ -106,7 +107,7 @@ EMAIL_PASSWORD="your-app-password"
 ```
 
 ### Frontend (.env)
-```
+```env
 VITE_API_URL="http://localhost:3000"
 VITE_WS_URL="http://localhost:3000"
 ```

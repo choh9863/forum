@@ -12,6 +12,9 @@
     "prisma:studio": "prisma studio",
     "prisma:push": "prisma db push",
     "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:pg:generate": "prisma generate --schema=./prisma/schema.postgresql.prisma",
+    "prisma:pg:migrate": "prisma migrate dev --schema=./prisma/schema.postgresql.prisma",
+    "prisma:pg:push": "prisma db push --schema=./prisma/schema.postgresql.prisma",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
