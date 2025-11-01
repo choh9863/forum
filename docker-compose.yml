@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 데이터베이스
+  postgres:
+    image: postgres:16-alpine
+    container_name: forum_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: forum_user
+      POSTGRES_PASSWORD: forum_password
+      POSTGRES_DB: forum
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - forum_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forum_user -d forum"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 백엔드 서버 (개발 모드)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: forum_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://forum_user:forum_password@postgres:5432/forum
+      JWT_SECRET: your-super-secret-jwt-key-change-this-in-production
+      JWT_EXPIRES_IN: 7d
+      EMAIL_HOST: smtp.gmail.com
+      EMAIL_PORT: 587
+      EMAIL_USER: your-email@gmail.com
+      EMAIL_PASSWORD: your-app-password
+      EMAIL_FROM: noreply@forum.com
+      PORT: 3000
+      FRONTEND_URL: http://localhost:5173
+      BACKEND_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - forum_network
+    command: npm run dev
+
+  # 프론트엔드 서버 (개발 모드)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: forum_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_WS_URL: http://localhost:3000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - forum_network
+    command: npm run dev
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  forum_network:
+    driver: bridge
