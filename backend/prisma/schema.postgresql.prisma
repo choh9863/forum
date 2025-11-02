@@ -1,0 +1,178 @@
+// This is your Prisma schema file for PostgreSQL (Production/Docker)
+// For SQLite (Development), use schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String
+  nickname      String   @unique
+  emailVerified Boolean  @default(false)
+  role          Role     @default(USER)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  boards            Board[]
+  posts             Post[]
+  comments          Comment[]
+  files             File[]
+  chatMessages      ChatMessage[]
+  emailVerification EmailVerification?
+  managedBoards     BoardManager[]
+  bannedFrom        BoardBan[]
+}
+
+model EmailVerification {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Board {
+  id            String   @id @default(uuid())
+  name          String
+  slug          String   @unique
+  description   String?
+  creatorId     String
+  isApproved    Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  requestReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  creator      User           @relation(fields: [creatorId], references: [id])
+  managers     BoardManager[]
+  posts        Post[]
+  chatMessages ChatMessage[]
+  bans         BoardBan[]
+}
+
+model BoardManager {
+  id         String   @id @default(uuid())
+  boardId    String
+  userId     String
+  assignedBy String
+  createdAt  DateTime @default(now())
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+}
+
+model Post {
+  id          String   @id @default(uuid())
+  boardId     String
+  authorId    String?
+  title       String
+  content     String
+  contentHtml String?
+  password    String?
+  ipAddress   String?
+  authorName  String   @default("익명")
+  viewCount   Int      @default(0)
+  likeCount   Int      @default(0)
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  board    Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  comments Comment[]
+  files    File[]
+
+  @@index([boardId])
+  @@index([createdAt])
+  @@index([isDeleted])
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  postId     String
+  authorId   String?
+  content    String
+  password   String?
+  ipAddress  String?
+  authorName String   @default("익명")
+  parentId   String?
+  isActive   Boolean  @default(true)
+  isDeleted  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+
+  @@index([postId])
+  @@index([parentId])
+}
+
+model File {
+  id           String   @id @default(uuid())
+  postId       String
+  userId       String?
+  filename     String
+  originalName String
+  mimetype     String
+  size         Int
+  path         String
+  url          String
+  createdAt    DateTime @default(now())
+
+  post Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  boardId    String
+  userId     String?
+  content    String
+  ipAddress  String?
+  authorName String   @default("익명")
+  createdAt  DateTime @default(now())
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([boardId])
+  @@index([createdAt])
+}
+
+model BoardBan {
+  id        String    @id @default(uuid())
+  boardId   String
+  userId    String
+  reason    String?
+  bannedBy  String
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+}

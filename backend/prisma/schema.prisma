@@ -1,0 +1,234 @@
+// Prisma Schema for Community Forum
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 사용자 역할 열거형
+enum Role {
+  USER         // 일반 사용자
+  ADMIN        // 관리자
+  SUPER_ADMIN  // 최고 관리자
+}
+
+// 사용자 모델
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password      String   // bcrypt 해싱된 비밀번호
+  nickname      String   @unique
+  role          Role     @default(USER)
+  emailVerified Boolean  @default(false) // 이메일 인증 여부
+  isActive      Boolean  @default(true)  // 계정 활성화 여부
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  emailVerifications EmailVerification[] // 이메일 인증 토큰들
+  createdBoards      Board[]            @relation("BoardCreator") // 개설한 게시판들
+  managedBoards      BoardManager[]     // 관리하는 게시판들
+  posts              Post[]             // 작성한 게시글들
+  comments           Comment[]          // 작성한 댓글들
+  files              File[]             // 업로드한 파일들
+  chatMessages       ChatMessage[]      // 작성한 채팅 메시지들
+  bannedFromBoards   BoardBan[]         @relation("BannedUser") // 차단된 게시판들
+  banActions         BoardBan[]         @relation("BannerUser") // 차단한 기록들
+  assignedManagers   BoardManager[]     @relation("AssignerUser") // 관리자로 임명한 기록들
+
+  @@index([email])
+  @@index([nickname])
+  @@map("users")
+}
+
+// 이메일 인증 모델
+model EmailVerification {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique // 인증 토큰
+  expiresAt DateTime // 만료 시간
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("email_verifications")
+}
+
+// 게시판 모델
+model Board {
+  id            String   @id @default(uuid())
+  name          String   // 게시판 이름
+  slug          String   @unique // URL 슬러그 (예: "free-board")
+  description   String?  // 게시판 설명
+  creatorId     String   // 개설자
+  isApproved    Boolean  @default(false) // 승인 여부
+  isActive      Boolean  @default(true)  // 활성화 여부
+  requestReason String?  // 개설 요청 이유
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  creator      User           @relation("BoardCreator", fields: [creatorId], references: [id])
+  managers     BoardManager[] // 게시판 관리자들
+  posts        Post[]         // 게시글들
+  chatMessages ChatMessage[]  // 채팅 메시지들
+  bans         BoardBan[]     // 차단 목록
+
+  @@index([slug])
+  @@index([creatorId])
+  @@index([isApproved])
+  @@index([isActive])
+  @@map("boards")
+}
+
+// 게시판 관리자 모델
+model BoardManager {
+  id         String   @id @default(uuid())
+  boardId    String   // 게시판 ID
+  userId     String   // 관리자 사용자 ID
+  assignedBy String   // 임명자 ID
+  createdAt  DateTime @default(now())
+
+  // Relations
+  board    Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assigner User  @relation("AssignerUser", fields: [assignedBy], references: [id])
+
+  @@unique([boardId, userId]) // 한 게시판에 같은 사용자는 한 번만 관리자로 등록
+  @@index([boardId])
+  @@index([userId])
+  @@map("board_managers")
+}
+
+// 게시글 모델
+model Post {
+  id          String   @id @default(uuid())
+  boardId     String   // 게시판 ID
+  authorId    String?  // 작성자 ID (로그인 사용자의 경우, nullable)
+  title       String   // 제목
+  content     String   @db.Text // 원본 콘텐츠 (마크다운 등)
+  contentHtml String   @db.Text // HTML 변환된 콘텐츠
+  password    String?  // 익명 게시글의 비밀번호 (bcrypt 해싱)
+  ipAddress   String?  // IP 주소 (마스킹된 형태: 119.70.**.**)
+  authorName  String   @default("익명") // 작성자 이름 (익명 또는 닉네임)
+  viewCount   Int      @default(0) // 조회수
+  likeCount   Int      @default(0) // 좋아요 수
+  isActive    Boolean  @default(true)  // 활성화 여부
+  isDeleted   Boolean  @default(false) // 삭제 여부 (소프트 삭제)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  board    Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  comments Comment[] // 댓글들
+  files    File[]    // 첨부 파일들
+
+  @@index([boardId])
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([isActive])
+  @@index([isDeleted])
+  @@map("posts")
+}
+
+// 댓글 모델
+model Comment {
+  id         String   @id @default(uuid())
+  postId     String   // 게시글 ID
+  authorId   String?  // 작성자 ID (nullable)
+  content    String   @db.Text // 댓글 내용
+  password   String?  // 익명 댓글의 비밀번호 (bcrypt 해싱)
+  ipAddress  String?  // IP 주소 (마스킹된 형태)
+  authorName String   @default("익명") // 작성자 이름
+  parentId   String?  // 부모 댓글 ID (대댓글의 경우)
+  isActive   Boolean  @default(true)  // 활성화 여부
+  isDeleted  Boolean  @default(false) // 삭제 여부
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author   User?     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies") // 대댓글들
+
+  @@index([postId])
+  @@index([authorId])
+  @@index([parentId])
+  @@index([createdAt])
+  @@map("comments")
+}
+
+// 파일 모델
+model File {
+  id           String   @id @default(uuid())
+  postId       String   // 게시글 ID
+  userId       String?  // 업로드한 사용자 ID
+  filename     String   // 저장된 파일명 (UUID 등)
+  originalName String   // 원본 파일명
+  mimetype     String   // MIME 타입
+  size         Int      // 파일 크기 (bytes)
+  path         String   // 파일 저장 경로
+  url          String   // 파일 접근 URL
+  createdAt    DateTime @default(now())
+
+  // Relations
+  post Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([postId])
+  @@index([userId])
+  @@map("files")
+}
+
+// 채팅 메시지 모델
+model ChatMessage {
+  id         String   @id @default(uuid())
+  boardId    String   // 게시판 ID
+  userId     String?  // 사용자 ID (nullable, 익명 가능)
+  content    String   @db.Text // 메시지 내용
+  ipAddress  String?  // IP 주소 (마스킹된 형태)
+  authorName String   @default("익명") // 작성자 이름
+  createdAt  DateTime @default(now())
+
+  // Relations
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([boardId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+// 게시판 차단 모델
+model BoardBan {
+  id        String    @id @default(uuid())
+  boardId   String    // 게시판 ID
+  userId    String    // 차단된 사용자 ID
+  reason    String?   // 차단 사유
+  bannedBy  String    // 차단한 관리자 ID
+  expiresAt DateTime? // 차단 만료 시간 (null이면 영구 차단)
+  createdAt DateTime  @default(now())
+
+  // Relations
+  board  Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user   User  @relation("BannedUser", fields: [userId], references: [id], onDelete: Cascade)
+  banner User  @relation("BannerUser", fields: [bannedBy], references: [id])
+
+  @@unique([boardId, userId]) // 한 게시판에 같은 사용자는 한 번만 차단
+  @@index([boardId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("board_bans")
+}
